@@ -36,6 +36,18 @@ class MockXcvrCodes(XcvrCodes):
         7: 'DataPathInitialized',
     }
 
+    ETHERNET_10_40G_COMPLIANCE = {
+        1: "40G Active Cable (XLPPI)",
+        2: "40GBASE-LR4",
+        4: "40GBASE-SR4",
+        8: "40GBASE-CR4",
+        16: "10GBASE-SR",
+        32: "10GBASE-LR",
+        64: "10GBASE-LRM",
+        88: "40GBASE-CR4",
+        128: "Extended"
+    }
+
 class MockXcvrMemMap(XcvrMemMap):
     def __init__(self, codes):
         super(MockXcvrMemMap, self).__init__(codes)
@@ -45,6 +57,9 @@ class MockXcvrMemMap(XcvrMemMap):
             RegBitField("CodeBit7", bitpos=7),
             RegBitField("CodeBit8", bitpos=8),
             size=2, format=">H")
+        
+        self.ETH_COMPLIANCE = CodeRegField("10/40G Ethernet Compliance", 131, self.codes.ETHERNET_10_40G_COMPLIANCE,
+                    *(RegBitField("%s_%d" % ("10/40G Ethernet Compliance", bit), bit) for bit in range(0, 7)))
         self.NUM_REG = NumberRegField("NumReg", 100, format=">Q", size=8, ro=False)
         self.SCALE_NUM_REG = NumberRegField("ScaleNumReg", 120, format=">i", size=4, scale=100, ro=False)
         self.FIXED_NUM_REG = FixedNumberRegField("FixedNumReg", 130, 8, format=">f", size=4, ro=False)
@@ -273,6 +288,41 @@ class TestStringRegField(object):
         data = bytearray("Arista Networks".encode("ascii"))
         assert field.decode(data) == "Arista Networks"
 
+class TestEthComplianceCode(object):
+    def test_decode(self):
+        field = mem_map.get_field("10/40G Ethernet Compliance")
+        print(field)
+        data = bytearray([0x1])
+        assert field.decode(data) == "40G Active Cable (XLPPI)"
+        data = bytearray([0x2])
+        assert field.decode(data) == "40GBASE-LR4"
+        data = bytearray([0x4])
+        assert field.decode(data) == "40GBASE-SR4"
+        data = bytearray([0x8])
+        assert field.decode(data) == "40GBASE-CR4"
+        data = bytearray([0x10])
+        assert field.decode(data) == "10GBASE-SR"
+        data = bytearray([0x40])
+        assert field.decode(data) == "10GBASE-LRM"
+        data = bytearray([128])
+        assert field.decode(data) == "40GBASE-CR4"
+        field = mem_map.get_field("10/40G Ethernet Compliance_0")
+        data = bytearray([0x1])
+        field = mem_map.get_field("10/40G Ethernet Compliance_1")
+        data = bytearray([0x1])
+        assert field.decode(data) == False
+
+'''
+           1: "40G Active Cable (XLPPI)",
+        2: "40GBASE-LR4",
+        4: "40GBASE-SR4",
+        8: "40GBASE-CR4",
+        16: "10GBASE-SR",
+        32: "10GBASE-LR",
+        64: "10GBASE-LRM",
+        128: "Extended",
+'''
+
 class TestCodeRegField(object):
     def test_decode(self):
         field = mem_map.get_field("CodeReg")
@@ -283,6 +333,7 @@ class TestCodeRegField(object):
         assert field.decode(data) == "Code1"
 
         field = mem_map.get_field("ShiftedCodeReg")
+        print(field)
         data = bytearray([0xFE, 0x7F])
         assert field.decode(data) == "Code0"
         data = bytearray([0xFE, 0xFF])
@@ -291,6 +342,7 @@ class TestCodeRegField(object):
         assert field.decode(data) == "Code2"
         data = bytearray([0xFF, 0xFF])
         assert field.decode(data) == "Code3"
+        print("Code3")
 
 class TestHexRegField(object):
     def test_decode(self):
