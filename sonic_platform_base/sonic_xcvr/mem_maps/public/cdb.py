@@ -1,5 +1,4 @@
 
-from ...mem_maps.public.cmis import CmisMemMap
 from ...fields import cdb_consts
 from ..xcvr_mem_map import XcvrMemMap
 
@@ -33,7 +32,7 @@ class CdbMemMap(XcvrMemMap):
                 RegBitField(cdb_consts.CDB1_HAS_FAILED, 6)),
                 RegBitsField(cdb_consts.CDB1_STATUS, bitpos=0, size=6),
             CdbStatusField(cdb_consts.CDB1_COMMAND_RESULT, self.getaddr(0x0, 37), size=1, format="B",
-                           deps=[(cdb_consts.CDB1_IS_BUSY, cdb_consts.CDB1_HAS_FAILED)])
+                           deps=[(cdb_consts.CDB1_IS_BUSY, cdb_consts.CDB1_HAS_FAILED)]),
         )
 
         self.cdb1_firmware_info = RegGroupField(cdb_consts.CDB1_FIRMWARE_INFO,
@@ -72,7 +71,7 @@ class CDBCommand():
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, name, cmd_id=0, epl=0, lpl=0, payload=None):
+    def __init__(self, name, cmd_id=0, epl=0, lpl=0, payload=None, rpl_field=None):
         self.name = name
         self.id = cmd_id
         self.epl = epl
@@ -80,9 +79,13 @@ class CDBCommand():
         self.rpl = struct.pack(">H", 0)
         self.page = 0x9F
         self.offset = 128
+        self.rpl_field = rpl_field
         self.payload = payload
         assert self.epl >= 0 and self.epl < 2047, "epl must be between 0 and 2048"
         assert self.lpl >= 0 and self.lpl < 256, "lpl must be between 0 and 256"
+
+    def get_reply_field(self):
+        return self.rpl_field
     
     def checksum(self, data):
         '''
@@ -100,6 +103,9 @@ class CDBCommand():
         return 6  # 2 bytes for id, 2 bytes for epl, 1 byte for lpl, 1 byte for checksum
     
     def encode(self):
+        """
+        Encodes the CDB command(hdr+payload) into bytes
+        """
         id_bytes = struct.pack(">H", self.id)
         epl_bytes = struct.pack(">H", self.epl)
         lpl_byte = struct.pack("B", self.lpl)
@@ -139,13 +145,15 @@ class CdbStatusQuery(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, name="CdbQueryStatus", cmd_id=cdb_consts.CDB_QUERY_STATUS_CMD):
+    def __init__(self, name="CdbQueryStatus", cmd_id=cdb_consts.CDB_QUERY_STATUS_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
         super(CdbStatusQuery, self).__init__(name,
                                             cmd_id,
                                             epl=0,
                                             lpl=2,
-                                            payload=struct.pack(">H", 0x0010))
-        
+                                            payload=struct.pack(">H", 0x0010),
+                                            rpl_field=reply_field)
+
 class CdbGetFirmwareInfo(CDBCommand):
     """
     Custom CDB command field.
@@ -156,9 +164,11 @@ class CdbGetFirmwareInfo(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, name="CdbGetFirmwareInfo", cmd_id=cdb_consts.CDB_GET_FIRMWARE_INFO_CMD):
+    def __init__(self, name="CdbGetFirmwareInfo", cmd_id=cdb_consts.CDB_GET_FIRMWARE_INFO_CMD,
+                 reply_field=cdb_consts.CDB1_FIRMWARE_INFO):
         super(CdbGetFirmwareInfo, self).__init__(name,
                                             cmd_id,
                                             epl=0,
                                             lpl=0,
-                                            payload=None)
+                                            payload=None,
+                                            rpl_field=reply_field)
