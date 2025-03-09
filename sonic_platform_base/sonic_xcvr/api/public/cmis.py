@@ -114,10 +114,14 @@ class CmisApi(XcvrApi):
     LowPwrRequestSW = 4
     LowPwrAllowRequestHW = 6
 
-    def __init__(self, xcvr_eeprom):
+    def __init__(self, xcvr_eeprom, cdb_hdlr=None):
         super(CmisApi, self).__init__(xcvr_eeprom)
         self.vdm = CmisVdmApi(xcvr_eeprom) if not self.is_flat_memory() else None
         self.cdb = CmisCdbApi(xcvr_eeprom) if not self.is_flat_memory() else None
+        self.cdb_hdlr = cdb_hdlr
+
+    def get_cdb_handler(self):
+        return self.cdb_hdlr
 
     def _get_vdm_key_to_db_prefix_map(self):
         return CMIS_VDM_KEY_TO_DB_PREFIX_KEY_MAP

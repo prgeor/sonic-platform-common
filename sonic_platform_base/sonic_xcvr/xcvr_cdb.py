@@ -4,13 +4,12 @@
    CDB Message handler
 """
 
-import struct
 import sonic_xcvr.fields.cdb_consts as cdb_consts
 from .xcvr_eeprom import XcvrEeprom
 
-class XcvrCdbMsg(XcvrEeprom):
+class XcvrCdbHandler(XcvrEeprom):
     def __init__(self, reader, writer, mem_map):
-        super(XcvrCdbMsg, self).__init__(reader, writer, mem_map)
+        super(XcvrCdbHandler, self).__init__(reader, writer, mem_map)
 
     def read_reply(self, cdb_cmd):
         """
