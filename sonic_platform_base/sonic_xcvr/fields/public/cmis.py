@@ -15,9 +15,9 @@ class CableLenField(NumberRegField):
         return base_len * mult
 
 class CdbStatusField(NumberRegField):
-    def __init__(self, name, offset, fields, **kwargs):
-        kwargs["deps"] = [cdb_consts.CDB1_IS_BUSY, cdb_consts.CDB1_HAS_FAILED]
-        super(CdbStatusField, self).__init__(name, offset, fields, **kwargs)
+    def __init__(self, name, offset, *fields, **kwargs):
+        kwargs["deps"] = [cdb_consts.CDB1_IS_BUSY, cdb_consts.CDB1_HAS_FAILED, cdb_consts.CDB1_STATUS]
+        super(CdbStatusField, self).__init__(name, offset, *fields, **kwargs)
 
     def get_status(self, codes, status):
         """

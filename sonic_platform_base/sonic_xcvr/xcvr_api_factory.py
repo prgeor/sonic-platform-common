@@ -12,7 +12,9 @@ from .api.public.cmis import CmisApi
 from .api.public.c_cmis import CCmisApi
 from .mem_maps.public.cmis import CmisMemMap
 from .mem_maps.public.c_cmis import CCmisMemMap
-from .xcvr_cdb import XcvrCdbHandler as Cdb
+from .mem_maps.public.cdb import CdbMemMap
+from .xcvr_cdb import CdbMsgHandler as Cdb
+from .codes.public.cdb import CdbCodes
 
 from .codes.credo.aec_800g import CmisAec800gCodes
 from .api.credo.aec_800g import CmisAec800gApi
@@ -94,7 +96,8 @@ class XcvrApiFactory(object):
                 codes = CmisCodes
                 mem_map = CmisMemMap(codes)
                 xcvr_eeprom = XcvrEeprom(self.reader, self.writer, mem_map)
-                cdb = Cdb(self.reader, self.writer, mem_map)
+                cdb_mem_map = CdbMemMap(CdbCodes)
+                cdb = Cdb(self.reader, self.writer, cdb_mem_map)
                 api = CmisApi(xcvr_eeprom, cdb)
 
             if api.is_coherent_module():
