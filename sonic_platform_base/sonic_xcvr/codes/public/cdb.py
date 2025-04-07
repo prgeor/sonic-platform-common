@@ -50,3 +50,17 @@ class CdbCodes(XcvrCodes):
         0x10: "Module Password Accepted"
     }
 
+    CDB_WRITE_METHOD = {
+        0x00: "None",
+        0x01: "LPL",
+        0x02: "EPL",
+        0x03: "LPL and EPL"
+    }
+
+    CDB_READ_METHOD = {
+        0x00: "None",
+        0x01: "LPL",
+        0x02: "EPL",
+        0x03: "LPL and EPL"
+    }
+

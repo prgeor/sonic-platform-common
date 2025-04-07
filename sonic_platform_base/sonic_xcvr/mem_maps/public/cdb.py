@@ -60,8 +60,28 @@ class CdbMemMap(XcvrMemMap):
                 NumberRegField(cdb_consts.CDB1_FACTORY_BUILD_VERSION, self.getaddr(cdb_consts.LPL_PAGE, 212), size=2, format=">H"),
         )
 
+        self.cdb_firmware_mgmt = RegGroupField(cdb_consts.CDB_FIRMWARE_MGMT,
+            NumberRegField(cdb_consts.CDB_FIRMWARE_MGMT_ADV, self.getaddr(cdb_consts.LPL_PAGE, 137),
+                    RegBitField(cdb_consts.CDB_MAX_DURATION_ENCODING, 3),
+                    RegBitField(cdb_consts.CDB_ABORT_CMD_SUPPORTED, 0)),
+            NumberRegField(cdb_consts.CDB_START_CMD_PAYLOAD_SIZE, self.getaddr(cdb_consts.LPL_PAGE, 138)),
+            NumberRegField(cdb_consts.CDB_READ_WRITE_LENGTH_EXT, self.getaddr(cdb_consts.LPL_PAGE, 140), scale=0.125),
+            CodeRegField(cdb_consts.CDB_WRITE_MECHANISM, self.getaddr(cdb_consts.LPL_PAGE, 141),
+                    self.codes.CDB_WRITE_METHOD),
+            CodeRegField(cdb_consts.CDB_READ_MECHANISM, self.getaddr(cdb_consts.LPL_PAGE, 142),
+                    self.codes.CDB_READ_METHOD),
+        )
+
         self.cdb1_query_status_cmd = CdbStatusQuery()
         self.cdb1_firmware_info_cmd = CdbGetFirmwareInfo()
+        self.cdb1_firmware_info_cmd = CdbGetFirmwareInfo()
+        self.cdb1_start_fw_download_cmd = CdbStartFirmwareDownload()
+        self.cdb1_abort_fw_download_cmd = CdbAbortFirmwareDownload()
+        self.cdb1_complete_fw_download_cmd = CdbCompleteFirmwareDownload()
+        self.cdb1_run_fw_download_cmd = CdbRunFirmwareDownload()
+        self.cdb1_commit_fw_download_cmd = CdbCommitFirmwareDownload()
+        self.cdb1_write_lpl_block_cmd = CdbWriteLplBlock()
+        self.cdb1_write_epl_block_cmd = CdbWriteEplBlock()
 
     def _get_all_cdb_cmds(self):
         if not self.cdb_cmds:
@@ -120,12 +140,16 @@ class CDBCommand():
     
     def encode(self, payload=None):
         """
-        Encodes the CDB command(hdr+payload) into bytes
+        Encodes the CDB command(hdr+LPL CMD data/payload) into bytes
         """
         id_bytes = struct.pack(">H", self.cmd_id)
         epl_bytes = struct.pack(">H", self.epl)
-        lpl_byte = struct.pack("B", self.lpl)
+        if payload is not None:
+            lpl_byte = struct.pack("B", len(payload))
+        else:
+            lpl_byte = struct.pack("B", self.lpl)
         hdr_bytes = id_bytes + epl_bytes + lpl_byte
+
         if payload is not None:
             cksum = self.checksum(hdr_bytes + payload)
         else:
@@ -186,3 +210,156 @@ class CdbGetFirmwareInfo(CDBCommand):
                                             epl=0,
                                             lpl=0,
                                             rpl_field=reply_field)
+
+class CdbStartFirmwareDownload(CDBCommand):
+    """
+    CDB command 0x0101 to start firmware download.
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbStartFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+        # Encode LPL CMD data
+    def encode(self, payload):
+        imgsize = payload.get("imgsize")
+        imghdr = payload.get("imghdr")
+        lpl_data = struct.pack(">I", imgsize) + \
+            struct.pack(">H", 0x0000) + \
+            imghdr # Vendor data
+        return super(CdbStartFirmwareDownload, self).encode(payload=lpl_data)
+
+class CdbAbortFirmwareDownload(CDBCommand):
+    """
+    CDB command 0x0102 to Abort the firmware download
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_ABORT_FIRMWARE_DOWNLOAD_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbAbortFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+class CdbCompleteFirmwareDownload(CDBCommand):
+    """
+    CDB command 0x0107 to complete the firmware download
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_COMPLETE_FIRMWARE_DOWNLOAD_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbCompleteFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+
+class CdbRunFirmwareDownload(CDBCommand):
+    """
+    CDB command 0x0109 to run the firmware download
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_RUN_FIRMWARE_IMAGE_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbRunFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=4,
+                                            rpl_field=reply_field)
+
+    def encode(self, payload):
+        runmode = payload.get("runmode")
+        delay = payload.get("delay")
+        lpl_data = struct.pack("B", 0) + \
+                    struct.pack(">B", runmode) + \
+                        struct.pack(">H", delay)
+        return super(CdbRunFirmwareDownload, self).encode(payload=lpl_data)
+
+class CdbCommitFirmwareDownload(CDBCommand):
+    """
+    CDB command 0x010A to commit the firmware download
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbCommitFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+class CdbWriteLplBlock(CDBCommand):
+    """
+    CDB command 0x0103 to write firmware LPL block
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_LPL_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbStartFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+        # Encode LPL CMD data
+    def encode(self, payload):
+        blkaddr = payload.get("blkaddr")
+        blkdata = payload.get("blkdata") # Firmware Block data
+        assert len(blkdata) <= cdb_consts.LPL_MAX_PAYLOAD_SIZE, "LPL size must be less than 116"
+        lpl_data = struct.pack(">I", blkaddr) + blkdata
+        return super(CdbWriteLplBlock, self).encode(payload=lpl_data)
+
+class CdbWriteEplBlock(CDBCommand):
+    """
+    CDB command 0x0104 to write firmware EPL block
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_EPL_CMD,
+                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+        super(CdbStartFirmwareDownload, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=4,
+                                            rpl_field=reply_field)
+    
+    def getaddr(self):
+        return (cdb_consts.EPL_PAGE * cdb_consts.PAGE_SIZE) + self.offset
+
+        # Encode LPL CMD data
+    def encode(self, payload):
+        blkaddr = payload.get("blkaddr")
+        blkdata = payload.get("blkdata") # Firmware Block data
+        self.epl = len(blkdata) # Update EPL length
+        assert self.epl <= cdb_consts.EPL_MAX_PAYLOAD_SIZE, "EPL size must be less than 2048"
+        lpl_data = struct.pack(">I", blkaddr) # EPL block data is written separately
+        return super(CdbWriteEplBlock, self).encode(payload=lpl_data)
+
