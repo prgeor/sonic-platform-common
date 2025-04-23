@@ -31,21 +31,23 @@ class CdbMemMap(XcvrMemMap):
         self.cdb1_status = RegGroupField(cdb_consts.CDB1_CMD_STATUS_FIELD,
             NumberRegField(cdb_consts.CDB1_CMD_STATUS, self.getaddr(0x0, 37),
                 RegBitField(cdb_consts.CDB1_IS_BUSY, 7),
-                RegBitField(cdb_consts.CDB1_HAS_FAILED, 6)),
-            RegBitsField(cdb_consts.CDB1_STATUS, bitpos=0, size=6),
+                RegBitField(cdb_consts.CDB1_HAS_FAILED, 6),
+                RegBitsField(cdb_consts.CDB1_STATUS, bitpos=0, size=6), bitdecode=True),
             CdbStatusField(cdb_consts.CDB1_COMMAND_RESULT, self.getaddr(0x0, 37), size=1, format="B",
                            deps=[(cdb_consts.CDB1_IS_BUSY, cdb_consts.CDB1_HAS_FAILED, cdb_consts.CDB1_STATUS)]),
         )
 
         self.cdb1_firmware_info = RegGroupField(cdb_consts.CDB1_FIRMWARE_INFO,
-                NumberRegField(cdb_consts.CDB1_FIRMWARE_STATUS, self.getaddr(cdb_consts.LPL_PAGE, 136),
-                    RegBitField(cdb_consts.CDB1_BANKA_OPER_STATUS, 0),
-                    RegBitField(cdb_consts.CDB1_BANKB_OPER_STATUS, 4),
-                    RegBitField(cdb_consts.CDB1_BANKA_ADMIN_STATUS, 1),
-                    RegBitField(cdb_consts.CDB1_BANKB_ADMIN_STATUS, 5),
-                    RegBitField(cdb_consts.CDB1_BANKA_VALID_STATUS, 2),
-                    RegBitField(cdb_consts.CDB1_BANKB_VALID_STATUS, 6)),
-                NumberRegField(cdb_consts.CDB1_IMAGE_INFO, self.getaddr(cdb_consts.LPL_PAGE, 137),
+                    NumberRegField(cdb_consts.CDB1_FIRMWARE_STATUS, self.getaddr(cdb_consts.LPL_PAGE, 136),
+                       RegBitField(cdb_consts.CDB1_BANKA_OPER_STATUS, 0),
+                       RegBitField(cdb_consts.CDB1_BANKA_ADMIN_STATUS, 1),
+                       RegBitField(cdb_consts.CDB1_BANKA_VALID_STATUS, 2),
+                       RegBitField(cdb_consts.CDB1_BANKB_OPER_STATUS, 4),
+                       RegBitField(cdb_consts.CDB1_BANKB_ADMIN_STATUS, 5),
+                       RegBitField(cdb_consts.CDB1_BANKB_VALID_STATUS, 6),
+                       bitdecode=True
+                    ),
+                    NumberRegField(cdb_consts.CDB1_IMAGE_INFO, self.getaddr(cdb_consts.LPL_PAGE, 137),
                                RegBitField(cdb_consts.CDB1_IMAGEA_VERSION_PRESENT, 0),
                                RegBitField(cdb_consts.CDB1_IMAGEB_VERSION_PRESENT, 1),
                                RegBitField(cdb_consts.CDB1_FACTIMG_VERSION_PRESENT, 2)),
@@ -60,7 +62,7 @@ class CdbMemMap(XcvrMemMap):
                 NumberRegField(cdb_consts.CDB1_FACTORY_BUILD_VERSION, self.getaddr(cdb_consts.LPL_PAGE, 212), size=2, format=">H"),
         )
 
-        self.cdb_firmware_mgmt = RegGroupField(cdb_consts.CDB_FIRMWARE_MGMT,
+        self.cdb_firmware_mgmt_features = RegGroupField(cdb_consts.CDB_FIRMWARE_MGMT_FEATURES,
             NumberRegField(cdb_consts.CDB_FIRMWARE_MGMT_ADV, self.getaddr(cdb_consts.LPL_PAGE, 137),
                     RegBitField(cdb_consts.CDB_MAX_DURATION_ENCODING, 3),
                     RegBitField(cdb_consts.CDB_ABORT_CMD_SUPPORTED, 0)),
@@ -74,7 +76,7 @@ class CdbMemMap(XcvrMemMap):
 
         self.cdb1_query_status_cmd = CdbStatusQuery()
         self.cdb1_firmware_info_cmd = CdbGetFirmwareInfo()
-        self.cdb1_firmware_info_cmd = CdbGetFirmwareInfo()
+        self.cdb1_firmware_mgmt_features_cmd = CdbGetFirmwareMgmtFeatures()
         self.cdb1_start_fw_download_cmd = CdbStartFirmwareDownload()
         self.cdb1_abort_fw_download_cmd = CdbAbortFirmwareDownload()
         self.cdb1_complete_fw_download_cmd = CdbCompleteFirmwareDownload()
@@ -211,6 +213,23 @@ class CdbGetFirmwareInfo(CDBCommand):
                                             lpl=0,
                                             rpl_field=reply_field)
 
+class CdbGetFirmwareMgmtFeatures(CDBCommand):
+    """
+    CDB command 0x0041 to get firmware management features.
+
+    Args:
+        id: 2 bytes identifier
+        epl: 2 bytes extended payload length
+        lpl: 1 byte length of payload
+        checksum: 1 byte checksum
+    """
+    def __init__(self, cmd_id=cdb_consts.CDB_GET_FIRMWARE_MGMT_FEATURES_CMD,
+                 reply_field=cdb_consts.CDB_FIRMWARE_MGMT_FEATURES):
+        super(CdbGetFirmwareMgmtFeatures, self).__init__(cmd_id,
+                                            epl=0,
+                                            lpl=0,
+                                            rpl_field=reply_field)
+
 class CdbStartFirmwareDownload(CDBCommand):
     """
     CDB command 0x0101 to start firmware download.
@@ -221,12 +240,9 @@ class CdbStartFirmwareDownload(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+    def __init__(self, cmd_id=cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD):
         super(CdbStartFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=0,
-                                            rpl_field=reply_field)
+                                            epl=0, lpl=0)
         # Encode LPL CMD data
     def encode(self, payload):
         imgsize = payload.get("imgsize")
@@ -246,12 +262,9 @@ class CdbAbortFirmwareDownload(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_ABORT_FIRMWARE_DOWNLOAD_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+    def __init__(self, cmd_id=cdb_consts.CDB_ABORT_FIRMWARE_DOWNLOAD_CMD):
         super(CdbAbortFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=0,
-                                            rpl_field=reply_field)
+                                            epl=0, lpl=0)
 class CdbCompleteFirmwareDownload(CDBCommand):
     """
     CDB command 0x0107 to complete the firmware download
@@ -262,12 +275,9 @@ class CdbCompleteFirmwareDownload(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_COMPLETE_FIRMWARE_DOWNLOAD_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+    def __init__(self, cmd_id=cdb_consts.CDB_COMPLETE_FIRMWARE_DOWNLOAD_CMD):
         super(CdbCompleteFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=0,
-                                            rpl_field=reply_field)
+                                            epl=0, lpl=0)
 
 class CdbRunFirmwareDownload(CDBCommand):
     """
@@ -279,12 +289,9 @@ class CdbRunFirmwareDownload(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_RUN_FIRMWARE_IMAGE_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+    def __init__(self, cmd_id=cdb_consts.CDB_RUN_FIRMWARE_IMAGE_CMD):
         super(CdbRunFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=4,
-                                            rpl_field=reply_field)
+                                            epl=0, lpl=4)
 
     def encode(self, payload):
         runmode = payload.get("runmode")
@@ -304,12 +311,9 @@ class CdbCommitFirmwareDownload(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
+    def __init__(self, cmd_id=cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD):
         super(CdbCommitFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=0,
-                                            rpl_field=reply_field)
+                                            epl=0, lpl=0)
 class CdbWriteLplBlock(CDBCommand):
     """
     CDB command 0x0103 to write firmware LPL block
@@ -320,12 +324,9 @@ class CdbWriteLplBlock(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_LPL_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
-        super(CdbStartFirmwareDownload, self).__init__(cmd_id,
-                                            epl=0,
-                                            lpl=0,
-                                            rpl_field=reply_field)
+    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_LPL_CMD):
+        super(CdbWriteLplBlock, self).__init__(cmd_id,
+                                            epl=0, lpl=0)
         # Encode LPL CMD data
     def encode(self, payload):
         blkaddr = payload.get("blkaddr")
@@ -344,12 +345,10 @@ class CdbWriteEplBlock(CDBCommand):
         lpl: 1 byte length of payload
         checksum: 1 byte checksum
     """
-    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_EPL_CMD,
-                 reply_field=cdb_consts.CDB1_QUERY_STATUS):
-        super(CdbStartFirmwareDownload, self).__init__(cmd_id,
+    def __init__(self, cmd_id=cdb_consts.CDB_WRITE_FIRMWARE_EPL_CMD):
+        super(CdbWriteEplBlock, self).__init__(cmd_id,
                                             epl=0,
-                                            lpl=4,
-                                            rpl_field=reply_field)
+                                            lpl=4)
     
     def getaddr(self):
         return (cdb_consts.EPL_PAGE * cdb_consts.PAGE_SIZE) + self.offset

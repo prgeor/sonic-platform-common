@@ -38,26 +38,56 @@ class CdbMsgHandler(XcvrEeprom):
         # Finally write the first two CMD bytes to trigger CDB processing
         return self.writer(cdb_cmd.getaddr(), 2, bytes[:2])
 
-    def get_status(self):
+    def wait_for_cdb_status(self):
+        """
+        Wait for CDB status to be ready
+        """
+        delay = cdb_consts.CDB_MAX_ACCESS_HOLD_OFF_PERIOD // cdb_consts.CDB_MAX_CAPTURE_TIME
+        delay = (delay + 100) // 1000 # Add extra 100msec just in case
+        while (delay > 0):
+            time.sleep(cdb_consts.CDB_MAX_CAPTURE_TIME // 1000)
+            delay -= 1
+            status = self.read(cdb_consts.CDB1_CMD_STATUS)
+            if (status is None) or (True == status[cdb_consts.CDB1_IS_BUSY]):
+               continue
+            break
+        return status
+
+    def send_cmd(self, cdb_cmd_id, payload=None):
+        """
+        Send CDB command, wait for completion and check status
+        """
+        # Write the command to the CDB
+        if True != self.write_cmd(cdb_cmd_id, payload):
+            print(f"Failed to write CDB command: {cdb_cmd_id}")
+            return None
+
+        # Wait for the command to complete
+        status = self.wait_for_cdb_status()
+        if status is None:
+            print(f"CDB command: {cdb_cmd_id} failed to complete")
+            return None
+
+        is_busy = status[cdb_consts.CDB1_IS_BUSY]
+        if True == is_busy:
+            status = self.get_cmd_fail_status()
+            print(f"CDB command: {cdb_cmd_id} is busy with status: {status}")
+            return None
+        
+        is_failed = status[cdb_consts.CDB1_HAS_FAILED]
+        if True == is_failed:
+            status = self.get_cmd_fail_status()
+            print(f"CDB command: {cdb_cmd_id} failed with status: {status}")
+            return None
+
+        return status[cdb_consts.CDB1_STATUS] == 0x1
+
+    def get_cmd_fail_status(self):
         """
         Get the status of the last CDB command
         Returns None if Module failed to reply to I2C command
         """
-        delay = cdb_consts.CDB_MAX_ACCESS_HOLD_OFF_PERIOD // cdb_consts.CDB_MAX_CAPTURE_TIME
-        while (delay > 0):
-            time.sleep(cdb_consts.CDB_MAX_CAPTURE_TIME // 1000)
-            delay -= 1
-            status = self.read(cdb_consts.CDB1_QUERY_STATUS)
-            if status is not None:
-                break
-
-        if status is None:
-            print("CDB command failed to reply")
-            return None
-
-        #status = self.read(cdb_consts.CDB1_CMD_STATUS)
-        if status[cdb_consts.CDB1_IS_BUSY] or status[cdb_consts.CDB1_HAS_FAILED]:
-            status = self.read(cdb_consts.CDB1_COMMAND_RESULT)
+        status = self.read(cdb_consts.CDB1_COMMAND_RESULT)
         return status
 
 class CdbFwHandler(CdbMsgHandler):
@@ -65,8 +95,44 @@ class CdbFwHandler(CdbMsgHandler):
         super(CdbFwHandler, self).__init__(reader, writer, mem_map)
         self.start_payload_size = 0
         self.is_lpl_only = False
-        self.rw_length_ext = cdb_consts.LPL_MAX_PAYLOAD_SIZE if self.is_lpl_only \
-                                            else cdb_consts.EPL_MAX_PAYLOAD_SIZE
+        self.rw_length_ext = 0
+        assert True == self.initFwHandler(), "Failed to initialize firmware handler"
+
+    def initFwHandler(self):
+        """
+        Initialize the firmware handler
+        """
+        if True != self.send_cmd(cdb_consts.CDB_GET_FIRMWARE_MGMT_FEATURES_CMD):
+            print("Failed to get firmware management features")
+            return False
+
+        # Read the firmware management features
+        reply = self.read_reply(cdb_consts.CDB_GET_FIRMWARE_MGMT_FEATURES_CMD)
+        if reply is None:
+            print("Failed to read firmware management features")
+            return False
+
+        self.start_payload_size = reply[cdb_consts.CDB_START_CMD_PAYLOAD_SIZE]
+        self.is_lpl_only = reply[cdb_consts.CDB_WRITE_MECHANISM] == "LPL"
+        self.rw_length_ext = reply[cdb_consts.CDB_READ_WRITE_LENGTH_EXT] + 8
+
+        if self.is_lpl_only:
+            self.rw_length_ext = min(cdb_consts.LPL_MAX_PAYLOAD_SIZE, self.rw_length_ext)
+        else:
+            self.rw_length_ext = min(cdb_consts.EPL_MAX_PAYLOAD_SIZE, self.rw_length_ext)
+
+        return True
+    
+    def get_firmware_info(self):
+        """
+        Get firmware information
+        """
+        if True != self.send_cmd(cdb_consts.CDB_GET_FIRMWARE_INFO_CMD):
+            print("Failed to get firmware info")
+            return False
+
+        # Read the firmware info
+        return self.read_reply(cdb_consts.CDB_GET_FIRMWARE_INFO_CMD)
 
     def write_epl_page(self, page, data):
         """
@@ -80,6 +146,10 @@ class CdbFwHandler(CdbMsgHandler):
         self.write_raw(page * cdb_consts.PAGE_SIZE, len(data), data)
 
     def start_fw_download(self, imgpath):
+        """
+        Start firmware download
+        :param imgpath: path to the firmware image
+        """
         with open(imgpath, 'rb') as fw_file:
             # Read the image file header bytes
             header_data = None
@@ -94,12 +164,9 @@ class CdbFwHandler(CdbMsgHandler):
             "imgsize" : len(header_data),
             "imghdr" : header_data
         }
+
         # Send the CDB start firmware download command
-        self.write_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
-        time.sleep(2)
-        # Check the status of the command
-        status = self.get_status()
-        print(f"Start firmware download status: {status}")
+        return self.send_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
 
     def run_fw_image(self, runmode=0x2, resetdelay=2):
         """
@@ -111,21 +178,15 @@ class CdbFwHandler(CdbMsgHandler):
             "runmode" : runmode,
             "delay" : resetdelay
         }
+
         # Send the CDB run firmware image command
-        self.write_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
-        time.sleep(3)
-        status = self.get_status()
-        print(f"Run firmware image status: {status}")
+        return self.send_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
 
     def commit_fw_image(self):
-        self.write_cmd(cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD)
-        status = self.get_status()
-        print(f"Commit firmware image status: {status}")
+        return self.send_cmd(cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD)
 
     def abort_fw_download(self):
-        self.write_cmd(cdb_consts.CDB_ABORT_FIRMWARE_DOWNLOAD_CMD)
-        status = self.get_status()
-        print(f"Abort firmware download status: {status}")
+        return self.send_cmd(cdb_consts.CDB_ABORT_FIRMWARE_DOWNLOAD_CMD)
 
     def write_lpl_block(self, blkaddr, blkdata):
         """

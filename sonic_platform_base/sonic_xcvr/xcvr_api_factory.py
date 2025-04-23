@@ -13,7 +13,7 @@ from .api.public.c_cmis import CCmisApi
 from .mem_maps.public.cmis import CmisMemMap
 from .mem_maps.public.c_cmis import CCmisMemMap
 from .mem_maps.public.cdb import CdbMemMap
-from .xcvr_cdb import CdbMsgHandler as Cdb
+from .xcvr_cdb import CdbFwHandler as Cdb
 from .codes.public.cdb import CdbCodes
 
 from .codes.credo.aec_800g import CmisAec800gCodes
