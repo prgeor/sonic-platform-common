@@ -248,7 +248,7 @@ class CdbStartFirmwareDownload(CDBCommand):
         imgsize = payload.get("imgsize")
         imghdr = payload.get("imghdr")
         lpl_data = struct.pack(">I", imgsize) + \
-            struct.pack(">H", 0x0000) + \
+            struct.pack(">I", 0) + \
             imghdr # Vendor data
         return super(CdbStartFirmwareDownload, self).encode(payload=lpl_data)
 

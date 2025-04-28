@@ -42,11 +42,12 @@ class CdbMsgHandler(XcvrEeprom):
         """
         Wait for CDB status to be ready
         """
-        delay = cdb_consts.CDB_MAX_ACCESS_HOLD_OFF_PERIOD // cdb_consts.CDB_MAX_CAPTURE_TIME
-        delay = (delay + 100) // 1000 # Add extra 100msec just in case
-        while (delay > 0):
+        delay = 0
+        status = None
+        # Add extra 500msec as a safety margin
+        while (delay < cdb_consts.CDB_MAX_ACCESS_HOLD_OFF_PERIOD  + 500):
             time.sleep(cdb_consts.CDB_MAX_CAPTURE_TIME // 1000)
-            delay -= 1
+            delay += cdb_consts.CDB_MAX_CAPTURE_TIME
             status = self.read(cdb_consts.CDB1_CMD_STATUS)
             if (status is None) or (True == status[cdb_consts.CDB1_IS_BUSY]):
                continue
@@ -151,6 +152,9 @@ class CdbFwHandler(CdbMsgHandler):
         :param imgpath: path to the firmware image
         """
         with open(imgpath, 'rb') as fw_file:
+            fw_file.seek(0, 2)  # Move to the end of the file
+            filesize = fw_file.tell() # Get the file size
+            fw_file.seek(0, 0)  # Move back to the start of the file
             # Read the image file header bytes
             header_data = None
             if self.start_payload_size > 0:
@@ -161,16 +165,16 @@ class CdbFwHandler(CdbMsgHandler):
 
         # Verify the header with the module
         payload = {
-            "imgsize" : len(header_data),
+            "imgsize" : filesize,
             "imghdr" : header_data
         }
 
         # Send the CDB start firmware download command
         return self.send_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
 
-    def run_fw_image(self, runmode=0x2, resetdelay=2):
+    def run_fw_image(self, runmode=0x0, resetdelay=2):
         """
-        Run the firmware image
+        Run the firmware image(default is non-hitless reset)
         :param runmode: 0x0: run the image, 0x1: 
         reset the module, 0x2: run and reset        
         """
@@ -180,7 +184,7 @@ class CdbFwHandler(CdbMsgHandler):
         }
 
         # Send the CDB run firmware image command
-        return self.send_cmd(cdb_consts.CDB_START_FIRMWARE_DOWNLOAD_CMD, payload)
+        return self.send_cmd(cdb_consts.CDB_RUN_FIRMWARE_IMAGE_CMD, payload)
 
     def commit_fw_image(self):
         return self.send_cmd(cdb_consts.CDB_COMMIT_FIRMWARE_IMAGE_CMD)
@@ -210,12 +214,12 @@ class CdbFwHandler(CdbMsgHandler):
 
         for page in range(pages):
             page_data = blkdata[page * cdb_consts.PAGE_SIZE : (page + 1) * cdb_consts.PAGE_SIZE]
-            self.write_epl_page(page + cdb_consts.EPL_PAGE, page_data)
+            assert True == self.write_epl_page(page + cdb_consts.EPL_PAGE, page_data)
 
         # Handle any remaining data that doesn't fit into a full page
         if len(blkdata) % cdb_consts.PAGE_SIZE != 0:
             remaining_data = blkdata[pages * cdb_consts.PAGE_SIZE:]
-            self.write_epl_page(pages + cdb_consts.EPL_PAGE, remaining_data)
+            assert True == self.write_epl_page(pages + cdb_consts.EPL_PAGE, remaining_data)
 
     def write_epl_block(self, blkaddr, blkdata):
         """
@@ -225,10 +229,9 @@ class CdbFwHandler(CdbMsgHandler):
             "blkaddr" : blkaddr,
             "blkdata" : blkdata
         }
+        
         # Send the CDB write firmware EPL command
-        self.write_cmd(cdb_consts.CDB_WRITE_FIRMWARE_EPL_CMD, payload)
-        status = self.get_status()
-        print(f"Write EPL block status: {status}")
+        return self.send_cmd(cdb_consts.CDB_WRITE_FIRMWARE_EPL_CMD, payload)
 
     def download_fw_image(self, imgpath):
         """
@@ -238,6 +241,7 @@ class CdbFwHandler(CdbMsgHandler):
         try:
             with open(imgpath, 'rb') as fw_file:
                 # Step 1. Read the initial payload (header)
+                # TODO Skip the header using fseek
                 header_data = None
                 if self.start_payload_size > 0:
                     header_data = fw_file.read(self.start_payload_size)
@@ -261,7 +265,11 @@ class CdbFwHandler(CdbMsgHandler):
                     if self.is_lpl_only:
                         self.write_lpl_block(blkaddr, blkdata)
                     else:
-                        self.write_epl_block(blkaddr, blkdata)
+                        # For EPL, write the data in pages
+                        self.write_epl_pages(blkdata)
+                        if True != self.write_epl_block(blkaddr, blkdata):
+                            print(f"Failed to write EPL block at address {blkaddr}")
+                            return False, blkaddr
 
                     # Update address for next chunk by the actual number of bytes written
                     blkaddr += len(blkdata)
