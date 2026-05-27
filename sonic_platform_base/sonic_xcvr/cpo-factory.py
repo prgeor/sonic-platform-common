@@ -32,7 +32,7 @@ class CpoBase(object): #Similar to Sfp object but for CPO consists of OE and ELS
  
 class CpoOptoeBase():
     """Provides Optoe driver functionality for OE/ELSP I2C devices"""
-    def set_optoe_write_max(self):
+    def set_optoe_write_max(self, sys_path, write_max):
         pass
 
     def get_oe_eeprom_path(self):
@@ -43,7 +43,17 @@ class CpoOptoeBase():
         # write to the sysfs
         pass
 
-    def read_oe_eeprom(self, offset, num_bytes, write_buffer):
+    def read_oe_eeprom(self, offset, num_bytes):
+        # get_oe_eeprom_path()
+        # read from the sysfs
+        pass
+
+    def write_elsp_eeprom(self, offset, num_bytes, write_buffer):
+        # get_oe_eeprom_path()
+        # write to the sysfs
+        pass
+
+    def read_elsp_eeprom(self, offset, num_bytes):
         # get_oe_eeprom_path()
         # read from the sysfs
         pass
