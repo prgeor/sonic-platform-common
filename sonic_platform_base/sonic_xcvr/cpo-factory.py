@@ -4,6 +4,14 @@ from sonic_platform_base.sonic_xcvr.api.public.cmis import CmisApi
 NvidiaSpc6OeId = 0x0001
 NvidiaSpc6ElspId = 0x0002
 
+class NvidiaOeMemMap(XcvrMemMap):
+    def __init__(self, codes):
+        super().__init__(codes)
+
+class NvidiaElspMemMap(XcvrMemMap):
+    def __init__(self, codes):
+        super().__init__(codes)
+
 class CpoBase(object): #Similar to Sfp object but for CPO consists of OE and ELSP objects
      def __init__(self, oe_bank_id=0, elsfp_bank_id=0, hardware_id: CpoHardwareId):
         self.oe_bank_id = oe_bank_id
