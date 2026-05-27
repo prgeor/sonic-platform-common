@@ -4,11 +4,11 @@ from sonic_platform_base.sonic_xcvr.api.public.cmis import CmisApi
 NvidiaSpc6OeId = 0x0001
 NvidiaSpc6ElspId = 0x0002
 
-class NvidiaOeMemMap(XcvrMemMap):
+class NvidiaOeMemMap(CmisMemMap):
     def __init__(self, codes):
         super().__init__(codes)
 
-class NvidiaElspMemMap(XcvrMemMap):
+class NvidiaElspMemMap(ElspMemMap):
     def __init__(self, codes):
         super().__init__(codes)
 
